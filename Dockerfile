@@ -1,8 +1,32 @@
+ARG ALPINE_BUILDER_VERSION
+ARG RTL_433_VERSION
+ARG S6_ARCH
+FROM alpine:${ALPINE_BUILDER_VERSION:-latest} as builder
+
+RUN apk add --no-cache \
+    build-base \
+    libusb-dev \
+    libressl-dev \
+    librtlsdr-dev \
+    cmake \
+    git
+
+WORKDIR /build
+RUN git clone https://github.com/merbanan/rtl_433
+WORKDIR ./rtl_433
+RUN git checkout ${RTL_433_VERSION:-master}
+
+RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DENABLE_OPENSSL=ON .
+RUN make
+RUN mkdir -p /build/root
+RUN make DESTDIR=/build/root install
+
 ARG S6_ARCH
 FROM oznu/s6-node:14.18.0-${S6_ARCH:-amd64}
 
 RUN apk add --no-cache git python2 python3 make g++ avahi-compat-libdns_sd avahi-dev dbus \
     iputils sudo nano \
+    libusb librtlsdr libressl tzdata \
   && chmod 4755 /bin/ping \
   && mkdir /homebridge \
   && npm set global-style=true \
@@ -31,6 +55,7 @@ WORKDIR /homebridge
 VOLUME /homebridge
 
 COPY root /
+COPY --from=builder /build/root/ /
 
 ARG AVAHI
 ENV ENABLE_AVAHI="${AVAHI:-0}"
