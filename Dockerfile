@@ -1,3 +1,23 @@
+FROM ubuntu:20.04 as builder
+
+ARG RTL_433_VERSION
+
+RUN set -x \
+  && apt-get update \
+  && apt-get install -y tzdata locales \
+  && locale-gen en_US.UTF-8 \
+  && apt-get install -y libusb-1.0-0-dev librtlsdr-dev libssl-dev cmake gcc git make
+
+WORKDIR /build
+RUN git clone https://github.com/merbanan/rtl_433
+WORKDIR ./rtl_433
+RUN git checkout ${RTL_433_VERSION:-master}
+
+RUN cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DENABLE_OPENSSL=ON .
+RUN make
+RUN mkdir -p /build/root
+RUN make DESTDIR=/build/root install
+
 FROM ubuntu:20.04
 
 LABEL org.opencontainers.image.title="Homebridge in Docker"
@@ -21,6 +41,7 @@ RUN set -x \
   && apt-get update \
   && apt-get install -y curl wget tzdata locales psmisc procps iputils-ping logrotate \
     libatomic1 apt-transport-https apt-utils jq openssl sudo nano net-tools \
+    libusb-1.0-0 librtlsdr0 \
   && locale-gen en_US.UTF-8 \
   && ln -snf /usr/share/zoneinfo/Etc/GMT /etc/localtime && echo Etc/GMT > /etc/timezone \
   && apt-get install -y python3 python3-pip python3-setuptools git python make g++ libnss-mdns \
@@ -69,6 +90,7 @@ RUN case "$(uname -m)" in \
   && rm -rf /var/lib/homebridge
 
 COPY rootfs /
+COPY --from=builder /build/root/ /
 
 EXPOSE 8581/tcp
 VOLUME /homebridge
